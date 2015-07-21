@@ -2,7 +2,7 @@
 title: "Practical Machine Learning Coursera-Project"
 author: "Stéphane Nyombayire"
 date: "Wednesday, July 21, 2015"
-output: html_document
+output: pdf_document
 ---
 ##Executive Summary
 The goal of this project aims to predict the manner in which six individuals performed physical activities via data collected by their wearable devices.  
