@@ -1,0 +1,137 @@
+---
+title: "Practical Machine Learning Coursera-Project"
+author: "Stéphane Nyombayire"
+date: "Wednesday, July 21, 2015"
+output: html_document
+---
+##Executive Summary
+The goal of this project aims to predict the manner in which six individuals performed physical activities via data collected by their wearable devices.  
+The outcome to predict is the "classe" variable in the test set. And this value ranges from A-E. I build a classification model using Random Forest. This model has 36 variables as predictors and with 100% success on the testing set (after running it against other portion of the assignment). We could possibly further reduce the number of predictors but this is doing already pretty well.
+
+##Data Analysis
+More details about the data can be found http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+###Data 
+The training data for this project are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+
+
+Let's get the data from the appropriate files:
+```{r, cache=TRUE, message=TRUE}
+training <- read.csv("pml-training.csv")
+testing<- read.csv("pml-testing.csv")
+dim(training); dim(testing)
+```
+Training set has 19622 observations and 160 variables; Test set has 20 observations and 160 variables.
+
+### Exploratory Analysis: Classes per User
+```{r, cache=TRUE, message=TRUE}
+plot(training$user_name, training$classe, xlab = "Users", ylab = "Classe", main = "Performance per User")
+```
+
+First we notice that all 6 users have accomplished their workout in all of the 5 categories. Category A is more prevalent for each of the user.
+ 
+###Data transformation and reducing the number of variables used in the model
+
+We first remove the first 7 columns of the data sets as they are orthogonal to our study. We applied the same transformation to the test data set
+```{r}
+training<-training[, -c(1:7)]
+testing<-testing[, -c(1:7)]
+```
+
+Getting getting rid of other irrelevant variables = zero covariates, by applying near zero variables method:
+```{r}
+set.seed(1969)
+nzvv <- nearZeroVar(testing)
+training<-training[, -nzvv]
+testing<-testing[, -nzvv]
+```
+
+There is a column difference between test and train; train has classe, test has problem\_id. We'll get rid of problem_id in test in add classe, so the 2 data sets have an identical set of variables.
+```{r}
+testing$problem_id <- NULL
+testing$classe<- c(rep("A",20))
+##transforming classe into a factor class for uniformity with the training set
+testing$classe <- as.factor(testing$classe)
+```
+
+##Prediction Model
+Our goal is to first reduce the number of predictors by using rpart and removing least important predictors. For the final list of predictors, we will run a random forest model
+
+###Reducing the number of predictors using RPart
+We will remove the predictors whose variable importance is 0
+```{r, cache = TRUE}
+modelFit <-  rpart(classe ~ ., data = training, method="class")
+vi <- varImp(modelFit)
+tmp<-rownames(vi)[vi$Overall>0]
+trainTemp<-training[, c(tmp,"classe")]
+testTemp<-testing[, c(tmp,"classe")]
+```
+
+###Model Building and Cross-validation
+
+```{r, cache = TRUE}
+modFit <-  randomForest(classe ~ ., data = trainTemp, importance = TRUE)
+predTrain <- predict(modFit, newdata=trainTemp, type = "class")
+confusionMatrix(predTrain, training$classe)$overall[1]
+```
+
+Accuracy on this model is 1. Pretty accurate prediction. Let's however use the Gini index to see if we can reduce the number of predictors.
+
+```{r}
+importantVariables <- importance(modFit)
+summary(importantVariables[,"MeanDecreaseGini"])
+```
+
+We can see a lot of variance among the predictors.
+
+###Model - final choice
+Let's build a Random Forest model with the first 10 variables in the order of Gini index importance. 
+```{r, cache=TRUE}
+indexedByGini = importantVariables[order(importantVariables[,"MeanDecreaseGini"],decreasing=TRUE),"MeanDecreaseGini"]
+trainTemp = training[ , c(names(indexedByGini[1:10]), "classe")]
+modelFit <- randomForest(classe ~ ., data = trainTemp, importance=TRUE)
+```
+
+Variables used:
+```{r}
+names(importance(modelFit)[,"MeanDecreaseGini"])
+```
+
+Our model's statistics:
+```{r}
+pred<-predict(modelFit, newdata=trainTemp)
+confusionMatrix(pred, trainTemp$classe)
+```
+
+And a view of our model:
+```{r}
+print(modelFit)
+```
+
+By only using the top ten predictors based on the Gini index we still achieve an accuracy of 1
+
+###Out of Sample Errors
+We expect the error of our model to be close to 0. Let's calculate the Out of Sample Error Rate for our model and see if that's true:
+```{r}
+confTable<-confusionMatrix(pred,trainTemp$classe)
+errorRate<-1-sum(diag(confTable$table))/sum(confTable$table)
+errorRate
+```
+
+###Verification of our model
+Finally, we perform the verification on the test set (which went through the same data transformations we applied to the training data set):
+```{r}
+testTemp = testing[ , c(names(indexedByGini[1:10]), "classe")]
+predTest <- predict(modelFit, newdata=testTemp)
+predTest
+```
+I also ran the submission script and the prediction for the test results were at 100%
+
+
